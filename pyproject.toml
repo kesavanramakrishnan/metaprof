@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "warplens-nv"
+version = "0.1.0"
+description = "NVIDIA-first profiling layer with canonical metrics and recipes"
+readme = "README.md"
+authors = [{name = "WarpLens", email = "dev@warplens.ai"}]
+license = {text = "Apache-2.0"}
+requires-python = ">=3.9"
+dependencies = [
+  "pydantic>=2.6",
+  "pyyaml>=6.0",
+  "rich>=13.7",
+  "typer>=0.12",
+  "typing-extensions>=4.10",
+]
+
+[project.scripts]
+warplens = "warplens_nv.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["warplens_nv*"]

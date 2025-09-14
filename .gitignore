@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+*.ncu-rep
+*.qdrep
+*.sqlite
+artifacts/
+.venv/
+.env
+.DS_Store

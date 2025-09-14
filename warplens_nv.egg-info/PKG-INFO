@@ -1,0 +1,34 @@
+Metadata-Version: 2.4
+Name: warplens-nv
+Version: 0.1.0
+Summary: NVIDIA-first profiling layer with canonical metrics and recipes
+Author-email: WarpLens <dev@warplens.ai>
+License: Apache-2.0
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: pydantic>=2.6
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: rich>=13.7
+Requires-Dist: typer>=0.12
+Requires-Dist: typing-extensions>=4.10
+
+# WarpLens NV (v0)
+
+NVIDIA-first profiling layer you can drop under SwizzlePerf. Unifies Nsight Compute (ncu), Nsight Systems (nsys), and (v1) CUPTI/NVML into a canonical metrics schema with high-level recipes.
+
+## Quick start
+
+```bash
+pip install -e .
+warplens --help
+```
+
+## Layout
+
+- `warplens_nv/core`: runner, schemas, results normalization, parsers, metrics catalog
+- `warplens_nv/adapters`: target launch adapters (python, pytest, binary)
+- `warplens_nv/storage`: artifact store
+- CLI: `warplens_nv/cli.py`; API: `warplens_nv/api.py`
+
+## License
+Apache-2.0

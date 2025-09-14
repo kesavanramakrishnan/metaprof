@@ -1,0 +1,2 @@
+[console_scripts]
+warplens = warplens_nv.cli:app
