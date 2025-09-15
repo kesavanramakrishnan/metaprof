@@ -1,4 +1,4 @@
-from typing import Dict, Any, Callable
+from typing import Dict, Any, Callable, List
 
 # Canonical metric registry and mapping to tool-specific counters
 
@@ -87,3 +87,24 @@ def kernel_time_ms(c: Dict[str, Any]):
 )
 def cpu_gpu_overlap_pct(c: Dict[str, Any]):
     return c.get("cpu_gpu_overlap_pct", None)
+
+# Tool counter requirements for Nsight Compute per canonical metric (best-effort v0)
+REQUIRED_COUNTERS_NCU: Dict[str, List[str]] = {
+    "l2_hit_rate": ["lts__t_sectors_hit.sum", "lts__t_sectors.sum"],
+    "dram_bw_util_pct": ["dram__bytes.sum"],
+    "warp_execution_efficiency_pct": ["warp__exec_efficiency"],
+}
+
+
+def required_counters_for(metrics: List[str]) -> List[str]:
+    counters: List[str] = []
+    for m in metrics:
+        counters += REQUIRED_COUNTERS_NCU.get(m, [])
+    # de-duplicate preserving order
+    seen = set()
+    out: List[str] = []
+    for c in counters:
+        if c not in seen:
+            seen.add(c)
+            out.append(c)
+    return out

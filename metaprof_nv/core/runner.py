@@ -4,12 +4,13 @@ import subprocess
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
 
-from warplens_nv.core.spec import ProfilingSpec
-from warplens_nv.core.results import ProfilingResult, Metrics, KernelMetrics, ArtifactPaths
-from warplens_nv.core.parsers.nsys_parser import parse_nsys_kernel_csv
-from warplens_nv.core.parsers.ncu_parser import parse_ncu_csv, compute_metrics_for_kernel
-from warplens_nv.core.catalog.recipes import resolve_recipe
-from warplens_nv.storage.artifact_store import ArtifactStore
+from metaprof_nv.core.spec import ProfilingSpec
+from metaprof_nv.core.results import ProfilingResult, Metrics, KernelMetrics, ArtifactPaths
+from metaprof_nv.core.parsers.nsys_parser import parse_nsys_kernel_csv
+from metaprof_nv.core.parsers.ncu_parser import parse_ncu_csv, compute_metrics_for_kernel
+from metaprof_nv.core.catalog.recipes import resolve_recipe
+from metaprof_nv.core.catalog import metrics as cat_metrics
+from metaprof_nv.storage.artifact_store import ArtifactStore
 
 
 class Runner:
@@ -21,10 +22,24 @@ class Runner:
         run_id = self.store.start_run(hint)
         artifacts = ArtifactPaths()
 
-        # Determine tools from recipe if not explicitly provided
+        # Determine requested metrics and tools
+        requested_metrics: List[str] = []
         tools = spec.profile.tools
-        if not tools and spec.profile.recipe:
-            tools = resolve_recipe(spec.profile.recipe)["tools"]
+        if spec.profile.recipe:
+            rec = resolve_recipe(spec.profile.recipe)
+            requested_metrics = rec.get("metrics", [])
+            tools = tools or rec.get("tools", [])
+        elif spec.profile.objectives:
+            requested_metrics = list(spec.profile.objectives)
+            # Infer tools from objectives if not provided
+            if not tools:
+                tools = []
+                for m in requested_metrics:
+                    md = cat_metrics.REGISTRY.get(m)
+                    if not md:
+                        continue
+                    if md.source not in tools:
+                        tools.append(md.source)
 
         # Prepass to pick kernels if needed
         kernel_names: List[str] = []
@@ -39,7 +54,7 @@ class Runner:
             # Without names, ncu will filter by regex directly
 
         if tools and "ncu" in tools:
-            ncu_csv, ncu_rep = self.ncu_profile(spec, run_id)
+            ncu_csv, ncu_rep = self.ncu_profile(spec, run_id, requested_metrics)
             artifacts.ncu = ncu_rep
             kernels = parse_ncu_csv(ncu_csv)
         else:
@@ -103,23 +118,28 @@ class Runner:
         rows = sorted(rows, key=lambda r: (r.get("time_ms") or 0), reverse=True)
         return [r["name"] for r in rows]
 
-    def ncu_profile(self, spec: ProfilingSpec, run_id: str) -> Tuple[str, str]:
+    def ncu_profile(self, spec: ProfilingSpec, run_id: str, requested_metrics: List[str]) -> Tuple[str, str]:
         out_csv = self.store.path(run_id, "ncu.csv")
         out_rep_base = self.store.path(run_id, "ncu_report")
         out_rep = out_rep_base + ".ncu-rep"
         entry_cmd = self._entry_command(spec)
 
-        # Sections from recipe
+        # Sections and counters from recipe/objectives
         sections: List[str] = []
+        counters: List[str] = []
         if spec.profile.recipe:
             rec = resolve_recipe(spec.profile.recipe)
-            # Minimal sections to begin with
             if "ncu" in rec["tools"]:
                 sections = ["LaunchStats", "MemoryWorkloadAnalysis", "WarpStateStats"]
+        # derive counters to request explicitly
+        ncu_metric_names = [m for m in requested_metrics if (cat_metrics.REGISTRY.get(m) and cat_metrics.REGISTRY[m].source == "ncu")]
+        counters = cat_metrics.required_counters_for(ncu_metric_names)
 
-        cmd = ["ncu", "--csv", "--target-processes", "all", "--export", out_rep_base]
+        cmd = ["ncu", "--csv", "--target-processes", "all", "--export", out_rep_base, "--force-overwrite"]
         for s in sections:
             cmd += ["--section", s]
+        if counters:
+            cmd += ["--metrics", ",".join(counters)]
         if spec.profile.kernel_selector.match:
             cmd += ["--kernel-name-base", f"regex:{spec.profile.kernel_selector.match}"]
         cmd += ["--", *entry_cmd]

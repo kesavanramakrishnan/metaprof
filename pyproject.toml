@@ -3,11 +3,11 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "warplens-nv"
+name = "metaprof-nv"
 version = "0.1.0"
 description = "NVIDIA-first profiling layer with canonical metrics and recipes"
 readme = "README.md"
-authors = [{name = "WarpLens", email = "dev@warplens.ai"}]
+authors = [{name = "MetaProf", email = "dev@metaprof.ai"}]
 license = {text = "Apache-2.0"}
 requires-python = ">=3.9"
 dependencies = [
@@ -19,8 +19,8 @@ dependencies = [
 ]
 
 [project.scripts]
-warplens = "warplens_nv.cli:app"
+metaprof = "metaprof_nv.cli:app"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["warplens_nv*"]
+include = ["metaprof_nv*"]

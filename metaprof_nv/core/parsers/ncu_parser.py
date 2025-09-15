@@ -1,6 +1,6 @@
 from typing import Dict, Any, List, Tuple
 import csv
-from warplens_nv.core.catalog import metrics as cat_metrics
+from metaprof_nv.core.catalog import metrics as cat_metrics
 
 
 def parse_ncu_csv(csv_path: str) -> List[Tuple[str, Dict[str, Any]]]:

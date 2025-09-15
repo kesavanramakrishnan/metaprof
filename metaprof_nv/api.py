@@ -1,8 +1,8 @@
 from typing import Dict, Any, Optional
-from warplens_nv.core.spec import ProfilingSpec
-from warplens_nv.core.runner import Runner
-from warplens_nv.core.results import ProfilingResult
-from warplens_nv.core.catalog.recipes import Recipes, resolve_recipe
+from metaprof_nv.core.spec import ProfilingSpec
+from metaprof_nv.core.runner import Runner
+from metaprof_nv.core.results import ProfilingResult
+from metaprof_nv.core.catalog.recipes import Recipes, resolve_recipe
 
 __all__ = ["profile", "Recipes", "ProfilingResult", "ProfilingSpec"]
 

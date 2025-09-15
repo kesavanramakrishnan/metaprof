@@ -1,4 +1,4 @@
-# WarpLens NV (v0)
+# MetaProf NV (v0)
 
 NVIDIA-first profiling layer you can drop under SwizzlePerf. Unifies Nsight Compute (ncu), Nsight Systems (nsys), and (v1) CUPTI/NVML into a canonical metrics schema with high-level recipes.
 
@@ -6,15 +6,15 @@ NVIDIA-first profiling layer you can drop under SwizzlePerf. Unifies Nsight Comp
 
 ```bash
 pip install -e .
-warplens --help
+metaprof --help
 ```
 
 ## Layout
 
-- `warplens_nv/core`: runner, schemas, results normalization, parsers, metrics catalog
-- `warplens_nv/adapters`: target launch adapters (python, pytest, binary)
-- `warplens_nv/storage`: artifact store
-- CLI: `warplens_nv/cli.py`; API: `warplens_nv/api.py`
+- `metaprof_nv/core`: runner, schemas, results normalization, parsers, metrics catalog
+- `metaprof_nv/adapters`: target launch adapters (python, pytest, binary)
+- `metaprof_nv/storage`: artifact store
+- CLI: `metaprof_nv/cli.py`; API: `metaprof_nv/api.py`
 
 ## License
 Apache-2.0
