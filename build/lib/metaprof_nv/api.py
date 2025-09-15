@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from metaprof_nv.core.spec import ProfilingSpec
 from metaprof_nv.core.runner import Runner
 from metaprof_nv.core.results import ProfilingResult
@@ -9,21 +9,12 @@ __all__ = ["profile", "Recipes", "ProfilingResult", "ProfilingSpec"]
 
 def profile(
     target: Dict[str, Any],
-    recipe: Optional[str] = None,
-    objectives: Optional[List[str]] = None,
+    recipe: str,
     kernel_selector: Optional[Dict[str, Any]] = None,
-    tools: Optional[List[str]] = None,
 ) -> ProfilingResult:
-    profile_dict: Dict[str, Any] = {"kernel_selector": kernel_selector or {}}
-    if tools:
-        profile_dict["tools"] = tools
-    if recipe:
-        profile_dict["recipe"] = recipe
-    elif objectives:
-        profile_dict["objectives"] = objectives
     spec = ProfilingSpec(
         target=target,
-        profile=profile_dict,
+        profile={"recipe": recipe, "kernel_selector": kernel_selector or {}},
     )
     runner = Runner()
     return runner.run(spec)

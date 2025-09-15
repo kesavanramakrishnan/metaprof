@@ -29,16 +29,18 @@ def profile_cmd(
         from metaprof_nv.core.spec import ProfilingSpec
         ks = {"match": match or None, "top_by_time": top_by_time or None}
         ks = {k: v for k, v in ks.items() if v is not None}
-        # Build profile fields for API call
-        target_dict = {"type": target_type, "entry": entry, "args": args.split() if args else []}
+        prof = {"kernel_selector": ks}
         if recipe:
-            result = profile(target=target_dict, recipe=recipe, kernel_selector=ks)
-        elif metric:
-            # metric-only path: send as objectives
-            result = profile(target=target_dict, objectives=[metric], kernel_selector=ks)
+            prof["recipe"] = recipe
         else:
-            # fall back: no recipe/metric provided
-            result = profile(target=target_dict, kernel_selector=ks)
+            # if single metric requested without recipe, set objectives
+            if metric:
+                prof["objectives"] = [metric]
+        spec_obj = ProfilingSpec(
+            target={"type": target_type, "entry": entry, "args": args.split() if args else []},
+            profile=prof,
+        )
+        result = profile(target=spec_obj.target.model_dump(), recipe=prof.get("recipe", "") or metric, kernel_selector=ks)
     from rich import print
     if metric:
         # Try summary first

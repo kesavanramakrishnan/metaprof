@@ -1,0 +1,158 @@
+import os
+import re
+import subprocess
+from pathlib import Path
+from typing import List, Dict, Any, Tuple
+
+from metaprof_nv.core.spec import ProfilingSpec
+from metaprof_nv.core.results import ProfilingResult, Metrics, KernelMetrics, ArtifactPaths
+from metaprof_nv.core.parsers.nsys_parser import parse_nsys_kernel_csv
+from metaprof_nv.core.parsers.ncu_parser import parse_ncu_csv, compute_metrics_for_kernel
+from metaprof_nv.core.catalog.recipes import resolve_recipe
+from metaprof_nv.core.catalog import metrics as cat_metrics
+from metaprof_nv.storage.artifact_store import ArtifactStore
+
+
+class Runner:
+    def __init__(self, artifact_root: str = "artifacts"):
+        self.store = ArtifactStore(artifact_root)
+
+    def run(self, spec: ProfilingSpec) -> ProfilingResult:
+        hint = Path(spec.target.entry).stem
+        run_id = self.store.start_run(hint)
+        artifacts = ArtifactPaths()
+
+        # Determine requested metrics and tools
+        requested_metrics: List[str] = []
+        tools = spec.profile.tools
+        if spec.profile.recipe:
+            rec = resolve_recipe(spec.profile.recipe)
+            requested_metrics = rec.get("metrics", [])
+            tools = tools or rec.get("tools", [])
+        elif spec.profile.objectives:
+            requested_metrics = list(spec.profile.objectives)
+            # Infer tools from objectives if not provided
+            if not tools:
+                tools = []
+                for m in requested_metrics:
+                    md = cat_metrics.REGISTRY.get(m)
+                    if not md:
+                        continue
+                    if md.source not in tools:
+                        tools.append(md.source)
+
+        # Prepass to pick kernels if needed
+        kernel_names: List[str] = []
+        if spec.profile.kernel_selector.top_by_time:
+            kernel_names = self.nsys_prepass(spec, run_id)
+            if spec.profile.kernel_selector.match:
+                pattern = re.compile(spec.profile.kernel_selector.match)
+                kernel_names = [k for k in kernel_names if pattern.search(k)]
+            kernel_names = kernel_names[: spec.profile.kernel_selector.top_by_time]
+        elif spec.profile.kernel_selector.match:
+            pattern = re.compile(spec.profile.kernel_selector.match)
+            # Without names, ncu will filter by regex directly
+
+        if tools and "ncu" in tools:
+            ncu_csv, ncu_rep = self.ncu_profile(spec, run_id, requested_metrics)
+            artifacts.ncu = ncu_rep
+            kernels = parse_ncu_csv(ncu_csv)
+        else:
+            kernels = []
+
+        # Aggregate metrics
+        by_kernel: List[KernelMetrics] = []
+        for name, counters in kernels:
+            km = KernelMetrics(name=name, time_ms=counters.get("time_ms"))
+            km.metrics = compute_metrics_for_kernel(counters)
+            by_kernel.append(km)
+
+        # Summary: simple averages over available metrics
+        summary: Dict[str, Any] = {}
+        if by_kernel:
+            keys = set().union(*[set(km.metrics.keys()) for km in by_kernel])
+            for k in keys:
+                vals = [km.metrics.get(k) for km in by_kernel if km.metrics.get(k) is not None]
+                summary[k] = sum(vals) / len(vals) if vals else None
+
+        result = ProfilingResult(
+            run_id=run_id,
+            workload={
+                "cmd": self._render_cmd(spec),
+                "env": spec.target.env,
+            },
+            artifacts=artifacts,
+            metrics=Metrics(summary=summary, by_kernel=by_kernel),
+        )
+
+        # Persist normalized result
+        self.store.write_json(run_id, "result.json", result.model_dump())
+        return result
+
+    def _render_cmd(self, spec: ProfilingSpec) -> str:
+        if spec.target.type == "python":
+            return "python " + spec.target.entry + (" " + " ".join(spec.target.args) if spec.target.args else "")
+        if spec.target.type == "pytest":
+            return "pytest " + spec.target.entry + (" " + " ".join(spec.target.args) if spec.target.args else "")
+        return spec.target.entry + (" " + " ".join(spec.target.args) if spec.target.args else "")
+
+    def nsys_prepass(self, spec: ProfilingSpec, run_id: str) -> List[str]:
+        out_csv = self.store.path(run_id, "nsys_kernels.csv")
+        # Run nsys stats directly if a qdrep already existed, else do a quick profile run.
+        entry_cmd = self._entry_command(spec)
+        qdrep = self.store.path(run_id, "trace.qdrep")
+        cmd = [
+            "nsys", "profile", "--trace=cuda,nvtx,osrt", "--sample=cpu",
+            "-o", qdrep.replace(".qdrep", ""),
+            *entry_cmd,
+        ]
+        subprocess.run(cmd, check=False)
+        # Extract kernel summary
+        stats_cmd = [
+            "nsys", "stats", "--report", "cudaapisum,kernsum", "--format", "csv",
+            qdrep,
+        ]
+        with open(out_csv, "w") as f:
+            subprocess.run(stats_cmd, stdout=f, check=False)
+        rows = parse_nsys_kernel_csv(out_csv)
+        rows = sorted(rows, key=lambda r: (r.get("time_ms") or 0), reverse=True)
+        return [r["name"] for r in rows]
+
+    def ncu_profile(self, spec: ProfilingSpec, run_id: str, requested_metrics: List[str]) -> Tuple[str, str]:
+        out_csv = self.store.path(run_id, "ncu.csv")
+        out_rep_base = self.store.path(run_id, "ncu_report")
+        out_rep = out_rep_base + ".ncu-rep"
+        entry_cmd = self._entry_command(spec)
+
+        # Sections and counters from recipe/objectives
+        sections: List[str] = []
+        counters: List[str] = []
+        if spec.profile.recipe:
+            rec = resolve_recipe(spec.profile.recipe)
+            if "ncu" in rec["tools"]:
+                sections = ["LaunchStats", "MemoryWorkloadAnalysis", "WarpStateStats"]
+        # derive counters to request explicitly
+        ncu_metric_names = [m for m in requested_metrics if (cat_metrics.REGISTRY.get(m) and cat_metrics.REGISTRY[m].source == "ncu")]
+        counters = cat_metrics.required_counters_for(ncu_metric_names)
+
+        cmd = ["ncu", "--csv", "--target-processes", "all", "--export", out_rep_base, "--force-overwrite"]
+        for s in sections:
+            cmd += ["--section", s]
+        if counters:
+            cmd += ["--metrics", ",".join(counters)]
+        if spec.profile.kernel_selector.match:
+            cmd += ["--kernel-name-base", f"regex:{spec.profile.kernel_selector.match}"]
+        cmd += ["--", *entry_cmd]
+
+        with open(out_csv, "w") as f:
+            subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT, check=False)
+        return out_csv, out_rep
+
+    def _entry_command(self, spec: ProfilingSpec) -> List[str]:
+        env = os.environ.copy()
+        env.update(spec.target.env or {})
+        if spec.target.type == "python":
+            return ["python", spec.target.entry, *spec.target.args]
+        if spec.target.type == "pytest":
+            return ["pytest", spec.target.entry, *spec.target.args]
+        return [spec.target.entry, *spec.target.args]
