@@ -1,6 +1,6 @@
 # MetaProf NV (v0)
 
-NVIDIA-first profiling layer you can drop under SwizzlePerf. Unifies Nsight Compute (ncu), Nsight Systems (nsys), and (v1) CUPTI/NVML into a canonical metrics schema with high-level recipes.
+NVIDIA-first profiling layer. Unifies Nsight Compute (ncu), Nsight Systems (nsys), and (v1) CUPTI/NVML into a canonical metrics schema with high-level recipes.
 
 ## Quick start
 
